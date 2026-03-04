@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+pdfplumber
+python-docx
+python-dotenv
+groq
+numpy
+pydantic
+openai
+langchain-text-splitters
+sqlalchemy
+psycopg2-binary
+alembic
