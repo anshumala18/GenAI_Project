@@ -6,8 +6,8 @@ services:
     container_name: documentai_db
     environment:
       POSTGRES_USER: docuser
-      POSTGRES_PASSWORD: documentai_password_123
-      POSTGRES_DB: documentai
+      POSTGRES_PASSWORD: nehu
+      POSTGRES_DB: DocAI
     ports:
       - "5432:5432"
     volumes:

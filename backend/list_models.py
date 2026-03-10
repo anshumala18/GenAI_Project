@@ -10,7 +10,7 @@ load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
 
 if not api_key or not api_key.startswith("xai-"):
-    print("❌ xAI API key not found")
+    print("xAI API key not found")
     exit(1)
 
 print("Connecting to xAI API...")
@@ -23,12 +23,12 @@ try:
     print("\nFetching available models...")
     models = client.models.list()
     
-    print("\n✅ Available models:")
+    print("\nAvailable models:")
     for model in models.data:
         print(f"  • {model.id}")
         
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"Error: {e}")
     print("\nTrying common model names instead...")
     
     # Try common xAI model names
@@ -49,10 +49,10 @@ except Exception as e:
                 messages=[{"role": "user", "content": "Hi"}],
                 max_tokens=10,
             )
-            print(f"✅ WORKS!")
+            print(f"WORKS!")
             break
         except Exception as err:
             if "not found" in str(err).lower():
-                print("❌ Not found")
+                print("Not found")
             else:
                 print(f"❓ Error: {err}")

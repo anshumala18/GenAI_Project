@@ -31,15 +31,15 @@ class IntelligenceEngine:
         self.using_groq_fallback = False
         
         if not self.api_key:
-            logger.error("❌ GROQ_API_KEY not found in environment!")
+            logger.error("Error: GROQ_API_KEY not found in environment!")
             return
         
-        logger.info(f"✓ API Key found: {self.api_key[:10]}...{self.api_key[-10:]}")
+        logger.info(f"API Key found: {self.api_key[:10]}...{self.api_key[-10:]}")
         
         # Initialize Grok/xAI client
         try:
             if self.api_key.startswith("xai-"):
-                logger.info("✓ Detected xAI Grok API Key")
+                logger.info("Detected xAI Grok API Key")
                 self.is_xai = True
                 self.client = OpenAI(
                     api_key=self.api_key,
@@ -47,16 +47,16 @@ class IntelligenceEngine:
                 )
                 # Try different model name variations for xAI
                 self.model_name = "grok-2-latest"
-                logger.info(f"✓ Using xAI Grok model: {self.model_name}")
+                logger.info(f"Using xAI Grok model: {self.model_name}")
             else:
-                logger.info("✓ Using Groq API")
+                logger.info("Using Groq API")
                 self.client = Groq(api_key=self.api_key)
                 self.model_name = "llama-3.1-8b-instant"  # Verified working model
-                logger.info(f"✓ Using Groq model: {self.model_name}")
+                logger.info(f"Using Groq model: {self.model_name}")
                 
-            logger.info("✓ Client initialized successfully!")
+            logger.info("Client initialized successfully!")
         except Exception as e:
-            logger.error(f"❌ Failed to initialize client: {e}")
+            logger.error(f"Error: Failed to initialize client: {e}")
             logger.error(traceback.format_exc())
             self.client = None
 
@@ -74,11 +74,11 @@ class IntelligenceEngine:
         logger.info("=" * 60)
         
         if not self.chunks:
-            logger.error("❌ No chunks available!")
+            logger.error("No chunks available!")
             return self._get_emergency_mock()
         
         if not self.client:
-            logger.error("❌ Client is not initialized!")
+            logger.error("Client is not initialized!")
             return self._get_emergency_mock()
         
         # Combine chunks (use all for better context)
@@ -121,7 +121,7 @@ Return exactly this structure with real analysis based on the document:
 IMPORTANT: Analyze the ACTUAL document content above. Do NOT return generic text."""
 
         try:
-            logger.info(f"🚀 Calling {self.model_name} API...")
+            logger.info(f"Calling {self.model_name} API...")
             
             # Build request parameters
             api_params = {
@@ -183,24 +183,24 @@ IMPORTANT: Analyze the ACTUAL document content above. Do NOT return generic text
             
             # Clean up response
             if content.startswith("```"):
-                logger.info("📝 Cleaning JSON (removing code blocks)")
+                logger.info("Cleaning JSON (removing code blocks)")
                 content = content.split("```")[1]
                 if content.startswith("json"):
                     content = content[4:]
                 content = content.strip()
             
-            logger.info("🔍 Parsing JSON...")
+            logger.info("Parsing JSON...")
             result = json.loads(content)
             logger.info("✅ Analysis completed successfully!")
             logger.info(f"📊 Results: {len(result.get('executive_summary', []))} summaries, {len(result.get('key_risks', []))} risks")
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"❌ JSON parse error: {e}")
+            logger.error(f"JSON parse error: {e}")
             logger.error(f"Content that failed to parse: {content[:500]}")
             return self._parse_text_response(content)
         except Exception as e:
-            logger.error(f"❌ API call failed: {e}")
+            logger.error(f"API call failed: {e}")
             logger.error(traceback.format_exc())
             return self._get_emergency_mock()
 

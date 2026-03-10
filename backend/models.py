@@ -7,6 +7,7 @@ class AnalysisResponse(BaseModel):
     opportunities: List[str]
     strategic_recommendations: List[str]
     filename: str
+    pdf_file_url: Optional[str] = None
 
 class ErrorResponse(BaseModel):
     detail: str

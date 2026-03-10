@@ -18,9 +18,9 @@ print("DATABASE INITIALIZATION")
 print("=" * 60)
 
 try:
-    print(f"\n📁 Creating tables...")
+    print(f"\nCreating tables...")
     Base.metadata.create_all(bind=engine)
-    print(f"✅ Tables created successfully!")
+    print(f"Tables created successfully!")
     
     # List created tables
     from sqlalchemy import inspect
@@ -30,16 +30,16 @@ try:
     print(f"\n📊 Tables in database:")
     for table in tables:
         columns = inspector.get_columns(table)
-        print(f"\n  ✓ {table}")
+        print(f"\n  * {table}")
         for col in columns:
             print(f"    - {col['name']}: {col['type']}")
     
     print("\n" + "=" * 60)
-    print("✅ Database is ready!")
+    print("Database is ready!")
     print("=" * 60)
     
 except Exception as e:
-    print(f"\n❌ Error: {e}")
+    print(f"\nError: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)

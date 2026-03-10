@@ -39,8 +39,8 @@ http://localhost:5050
    - **Hostname:** `postgres` (or `localhost`)
    - **Port:** `5432`
    - **Username:** `docuser`
-   - **Password:** `documentai_password_123`
-   - **Database:** `documentai`
+   - **Password:** `nehu`
+   - **Database:** `DocAI`
 
 4. **Click "Save"**
 
@@ -153,8 +153,8 @@ docker-compose restart
 
 Your `.env` now configured for:
 - ✅ PostgreSQL at `localhost:5432`
-- ✅ Database: `documentai`
+- ✅ Database: `DocAI`
 - ✅ User: `docuser`
-- ✅ Password: `documentai_password_123`
+- ✅ Password: `nehu`
 
 All future documents will be stored in PostgreSQL! 🎉

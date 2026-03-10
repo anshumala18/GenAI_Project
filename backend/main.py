@@ -11,10 +11,10 @@ import os
 
 app = FastAPI(title="Enterprise Document Intelligence API")
 
-# Setup CORS
+# Setup CORS - Use explicit origin for reliability with credentials
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,14 +37,12 @@ async def analyze_document(file: UploadFile = File(...), db: Session = Depends(g
         content = await file.read()
         
         # 1. Save PDF file to disk and database
-        pdf_file_url = f"http://localhost:8000/uploads/{file.filename}"
         pdf_file = save_pdf_file(
             db=db,
             original_filename=file.filename,
-            file_content=content,
-            file_url=pdf_file_url
+            file_content=content
         )
-        print(f"✅ PDF saved: {pdf_file.file_url}")
+        print(f"PDF saved successfully: {pdf_file.file_url}")
         
         # 2. Extract Text
         if file.filename.lower().endswith('.pdf'):
@@ -74,14 +72,15 @@ async def analyze_document(file: UploadFile = File(...), db: Session = Depends(g
             analysis=analysis
         )
         
-        print(f"✅ Analysis saved to database with ID: {db_record.id}")
+        print(f"Analysis saved to database with ID: {db_record.id}")
 
         return AnalysisResponse(
             executive_summary=analysis.get("executive_summary", []),
             key_risks=analysis.get("key_risks", []),
             opportunities=analysis.get("opportunities", []),
             strategic_recommendations=analysis.get("strategic_recommendations", []),
-            filename=file.filename
+            filename=file.filename,
+            pdf_file_url=pdf_file.file_url
         )
 
     except Exception as e:
@@ -94,12 +93,9 @@ async def health_check():
 
 @app.get("/analyses")
 async def get_analyses(db: Session = Depends(get_db)):
-    """Get all stored document analyses with PDF download links"""
+    """Get summarized list of last 10 document analyses for history sidebar"""
     analyses = get_all_analyses(db)
-    return {
-        "total": len(analyses),
-        "analyses": [a.to_dict() for a in analyses]
-    }
+    return [a.to_summary_dict() for a in analyses]
 
 @app.get("/analysis/{analysis_id}")
 async def get_analysis(analysis_id: int, db: Session = Depends(get_db)):
@@ -144,6 +140,27 @@ async def download_pdf(pdf_id: int, db: Session = Depends(get_db)):
         media_type="application/pdf"
     )
 
+@app.post("/analysis/{analysis_id}/pin")
+async def toggle_pin(analysis_id: int, db: Session = Depends(get_db)):
+    """Toggle pin status of an analysis"""
+    from database import toggle_pin_analysis
+    analysis = toggle_pin_analysis(db, analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return analysis.to_summary_dict()
+
+@app.delete("/analysis/{analysis_id}")
+async def delete_analysis_endpoint(analysis_id: int, db: Session = Depends(get_db)):
+    """Delete an analysis and its PDF file"""
+    from database import delete_analysis
+    success = delete_analysis(db, analysis_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return {"status": "success", "message": "Analysis deleted"}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("\nDOCUMENT AI BACKEND STARTING")
+    print("URL: http://127.0.0.1:8000")
+    print("--------------------------------")
+    uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -1,17 +1,22 @@
 import os
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, ForeignKey
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from datetime import datetime
 import json
+from dotenv import load_dotenv
 
-# SQLite database file
-DATABASE_URL = "sqlite:///./documentai.db"
+# Load environment variables from .env file
+load_dotenv()
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
+# Use DATABASE_URL from .env
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL is not set in the .env file. Please configure your PostgreSQL connection.")
+
+# Create the database engine
+engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -62,6 +67,7 @@ class DocumentAnalysis(Base):
     key_risks = Column(Text)          # JSON array
     opportunities = Column(Text)      # JSON array
     strategic_recommendations = Column(Text)  # JSON array
+    is_pinned = Column(Boolean, default=False)
     
     # Relationship to PDF file
     pdf_file = relationship("PDFFile", back_populates="analyses")
@@ -79,7 +85,17 @@ class DocumentAnalysis(Base):
             "key_risks": json.loads(self.key_risks),
             "opportunities": json.loads(self.opportunities),
             "strategic_recommendations": json.loads(self.strategic_recommendations),
-            "created_at": self.created_at.isoformat(),
+            "extracted_text": self.extracted_text,
+            "is_pinned": self.is_pinned,
+            "created_at": self.created_at.strftime("%Y-%m-%d"),
+        }
+
+    def to_summary_dict(self):
+        return {
+            "id": self.id,
+            "filename": self.filename,
+            "is_pinned": self.is_pinned,
+            "created_at": self.created_at.strftime("%Y-%m-%d"),
         }
 
 def get_db():
@@ -92,22 +108,27 @@ def get_db():
 def save_pdf_file(
     db: Session,
     original_filename: str,
-    file_content: bytes,
-    file_url: str
+    file_content: bytes
 ) -> PDFFile:
-    """Save PDF file and return file object with URL"""
-    # Generate safe filename
+    """Save PDF file and return file object with correct URL"""
     import uuid
     file_id = str(uuid.uuid4())[:8]
-    file_path = os.path.join(UPLOAD_DIR, f"{file_id}_{original_filename}")
+    # Clean the original filename to avoid URL issues
+    safe_name = "".join(c for c in original_filename if c.isalnum() or c in "._- ").replace(" ", "_")
+    final_filename = f"{file_id}_{safe_name}"
+    file_path = os.path.join(UPLOAD_DIR, final_filename)
     
     # Save file to disk
     with open(file_path, "wb") as f:
         f.write(file_content)
     
+    # Construct the serving URL
+    # Note: In production, this might be a full domain, but for local dev localhost:8000 works
+    file_url = f"http://localhost:8000/uploads/{final_filename}"
+    
     # Save metadata to database
     pdf_file = PDFFile(
-        filename=f"{file_id}_{original_filename}",
+        filename=final_filename,
         original_filename=original_filename,
         file_path=file_path,
         file_url=file_url,
@@ -140,10 +161,12 @@ def save_analysis(
     db.refresh(doc)
     return doc
 
-def get_all_analyses(db: Session, limit: int = 100):
-    """Retrieve all document analyses"""
+def get_all_analyses(db: Session, limit: int = 10):
+    """Retrieve the last N document analyses, pinned first"""
+    from sqlalchemy import desc
     return db.query(DocumentAnalysis).order_by(
-        DocumentAnalysis.created_at.desc()
+        desc(DocumentAnalysis.is_pinned),
+        desc(DocumentAnalysis.created_at)
     ).limit(limit).all()
 
 def get_analysis_by_id(db: Session, analysis_id: int):
@@ -151,6 +174,49 @@ def get_analysis_by_id(db: Session, analysis_id: int):
     return db.query(DocumentAnalysis).filter(
         DocumentAnalysis.id == analysis_id
     ).first()
+
+def toggle_pin_analysis(db: Session, analysis_id: int):
+    """Toggle the pinned state of an analysis"""
+    analysis = get_analysis_by_id(db, analysis_id)
+    if analysis:
+        analysis.is_pinned = not analysis.is_pinned
+        db.commit()
+        db.refresh(analysis)
+    return analysis
+
+def delete_analysis(db: Session, analysis_id: int):
+    """Delete analysis and its associated PDF file"""
+    analysis = get_analysis_by_id(db, analysis_id)
+    if not analysis:
+        return False
+        
+    # Get PDF file info
+    pdf_file = analysis.pdf_file
+    
+    # Delete from database
+    db.delete(analysis)
+    
+    # If the PDF file is only associated with this analysis (common in current app), 
+    # we can delete the PDF metadata too.
+    if pdf_file:
+        # Check if any other analysis uses this PDF
+        other_analyses = db.query(DocumentAnalysis).filter(
+            DocumentAnalysis.pdf_file_id == pdf_file.id
+        ).count()
+        
+        if other_analyses == 0:
+            # Delete file from disk
+            if pdf_file.file_path and os.path.exists(pdf_file.file_path):
+                try:
+                    os.remove(pdf_file.file_path)
+                except Exception as e:
+                    print(f"Error removing file from disk: {e}")
+            
+            # Delete PDF record from database
+            db.delete(pdf_file)
+            
+    db.commit()
+    return True
 
 def get_pdf_file_by_id(db: Session, pdf_id: int):
     """Get PDF file by ID"""
