@@ -26,7 +26,9 @@ import {
   StickyNote,
   Bot,
   Send,
-  Download
+  Download,
+  Sun,
+  Moon
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -62,6 +64,30 @@ export default function Home() {
   const [selectedDocument, setSelectedDocument] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Initialize theme from localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    setIsDarkMode(savedTheme === 'dark');
+  }, []);
+
+  // Sync theme class with isDarkMode state
+  useEffect(() => {
+    console.log("🌓 Theme Sync - isDarkMode:", isDarkMode);
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => {
+    console.log("button clicked - current state:", isDarkMode);
+    setIsDarkMode(!isDarkMode);
+  };
 
   // Auto-clear toast
   useEffect(() => {
@@ -535,6 +561,14 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={toggleTheme}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all text-gray-500 dark:text-gray-400"
+            title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-500" /> : <Moon className="w-5 h-5" />}
+          </button>
+          
           {selectedDocument && (
             <motion.button
               initial={{ opacity: 0, scale: 0.9 }}
@@ -758,9 +792,13 @@ export default function Home() {
                             </button>
                             <button 
                               onClick={openNotePopup}
-                              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-900 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-emerald-500 hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 flex-grow max-w-[180px]"
+                              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex-grow max-w-[180px] hover:shadow-md hover:-translate-y-0.5 ${noteText ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-emerald-500'}`}
                             >
-                              <StickyNote className="w-3.5 h-3.5 text-emerald-500" /> Add Note
+                              {noteText ? (
+                                <><StickyNote className="w-3.5 h-3.5 text-emerald-500" /> Add Note</>
+                              ) : (
+                                <><Plus className="w-3.5 h-3.5 text-emerald-500" /> Add Note</>
+                              )}
                             </button>
                             
                             <button 
@@ -899,7 +937,7 @@ export default function Home() {
                           <ExternalLink className="w-3 h-3" /> OPEN FULL
                         </a>
                       </div>
-                      <div className="flex-1 bg-white dark:bg-gray-900 overflow-hidden">
+                      <div className="flex-1 bg-white overflow-hidden">
                         <iframe
                           src={`${selectedDocument.preview_url || selectedDocument.pdf_file_url}#view=FitH&toolbar=0`}
                           className="w-full h-full border-none"
@@ -908,7 +946,7 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center text-gray-500 bg-white dark:bg-gray-900">
+                    <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center text-gray-500 bg-white">
                       <FileText className="w-12 h-12 text-gray-200 dark:text-gray-800 mb-6" />
                       <p className="font-bold text-gray-300 dark:text-gray-700 uppercase tracking-[0.2em] text-xs">No PDF Loaded</p>
                     </div>

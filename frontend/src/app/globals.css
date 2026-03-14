@@ -5,7 +5,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-:root {
+@variant dark (&:where(.dark, .dark *));
+
+:root, .dark {
   --background: #fdfdfd;
   --foreground: #111827;
   --card: #ffffff;
@@ -29,25 +31,25 @@
 }
 
 .dark {
-  --background: #030712;
-  --foreground: #f9fafb;
-  --card: #111827;
-  --card-foreground: #f9fafb;
-  --popover: #111827;
-  --popover-foreground: #f9fafb;
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
-  --secondary: #1f2937;
-  --secondary-foreground: #f9fafb;
-  --muted: #1f2937;
-  --muted-foreground: #9ca3af;
-  --accent: #1f2937;
-  --accent-foreground: #f9fafb;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #374151;
-  --input: #374151;
-  --ring: #3b82f6;
+  --background: #030712 !important;
+  --foreground: #f9fafb !important;
+  --card: #111827 !important;
+  --card-foreground: #f9fafb !important;
+  --popover: #111827 !important;
+  --popover-foreground: #f9fafb !important;
+  --primary: #3b82f6 !important;
+  --primary-foreground: #ffffff !important;
+  --secondary: #1f2937 !important;
+  --secondary-foreground: #f9fafb !important;
+  --muted: #1f2937 !important;
+  --muted-foreground: #9ca3af !important;
+  --accent: #1f2937 !important;
+  --accent-foreground: #f9fafb !important;
+  --destructive: #ef4444 !important;
+  --destructive-foreground: #ffffff !important;
+  --border: #374151 !important;
+  --input: #374151 !important;
+  --ring: #3b82f6 !important;
 }
 
 body {
