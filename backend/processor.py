@@ -1,5 +1,6 @@
 import pdfplumber
 import docx
+from pptx import Presentation
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import io
 
@@ -23,6 +24,15 @@ class DocumentProcessor:
     def extract_text_from_docx(self, file_content: bytes) -> str:
         doc = docx.Document(io.BytesIO(file_content))
         text = "\n".join([para.text for para in doc.paragraphs])
+        return text
+
+    def extract_text_from_pptx(self, file_content: bytes) -> str:
+        prs = Presentation(io.BytesIO(file_content))
+        text = ""
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text += shape.text + "\n"
         return text
 
     def clean_text(self, text: str) -> str:

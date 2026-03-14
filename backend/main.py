@@ -2,10 +2,15 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from models import AnalysisResponse, ErrorResponse
+from models import AnalysisResponse, ErrorResponse, NoteCreate, NoteResponse
 from processor import DocumentProcessor
 from engine import IntelligenceEngine
-from database import get_db, save_analysis, save_pdf_file, get_all_analyses, get_analysis_by_id, get_pdf_file_by_id, UPLOAD_DIR
+from database import (
+    get_db, save_analysis, save_document_file, get_all_analyses, 
+    get_analysis_by_id, get_pdf_file_by_id, UPLOAD_DIR,
+    save_note, get_notes_by_analysis_id
+)
+from converter import CloudConvertService
 from sqlalchemy.orm import Session
 import os
 
@@ -27,28 +32,39 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 processor = DocumentProcessor()
 engine = IntelligenceEngine()
+converter = CloudConvertService()
+
+CONVERTED_DIR = "converted_pdfs"
+if not os.path.exists(CONVERTED_DIR):
+    os.makedirs(CONVERTED_DIR)
+app.mount("/converted_pdfs", StaticFiles(directory=CONVERTED_DIR), name="converted_pdfs")
 
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if not file.filename.lower().endswith(('.pdf', '.docx')):
-        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and DOCX are supported.")
+    if not file.filename.lower().endswith(('.pdf', '.docx', '.pptx')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF, DOCX and PPTX are supported.")
 
     try:
         content = await file.read()
         
-        # 1. Save PDF file to disk and database
-        pdf_file = save_pdf_file(
+        # 1. Save document file to disk and database
+        pdf_file = save_document_file(
             db=db,
             original_filename=file.filename,
-            file_content=content
+            file_content=content,
+            mime_type=file.content_type
         )
-        print(f"PDF saved successfully: {pdf_file.file_url}")
+        print(f"Document saved successfully: {pdf_file.file_url}")
         
         # 2. Extract Text
         if file.filename.lower().endswith('.pdf'):
             text = processor.extract_text_from_pdf(content)
-        else:
+        elif file.filename.lower().endswith('.docx'):
             text = processor.extract_text_from_docx(content)
+        elif file.filename.lower().endswith('.pptx'):
+            text = processor.extract_text_from_pptx(content)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format")
             
         if not text.strip():
             raise HTTPException(status_code=400, detail="Document appears to be empty or unreadable.")
@@ -63,13 +79,23 @@ async def analyze_document(file: UploadFile = File(...), db: Session = Depends(g
         # 5. Analyze
         analysis = engine.analyze_document()
 
-        # 6. Save analysis to database with PDF file reference
+        # 6. Handle Preview URL (Conversion if needed)
+        preview_url = pdf_file.file_url
+        if file.filename.lower().endswith(('.docx', '.pptx')):
+            try:
+                converted_path = converter.convert_to_pdf(pdf_file.file_path, CONVERTED_DIR)
+                preview_url = f"http://localhost:8000/converted_pdfs/{os.path.basename(converted_path)}"
+            except Exception as e:
+                print(f"Conversion failed, using original file as preview (will fail in UI): {e}")
+
+        # 7. Save analysis to database with PDF file reference and preview URL
         db_record = save_analysis(
             db=db,
             pdf_file_id=pdf_file.id,
             filename=file.filename,
             extracted_text=text,
-            analysis=analysis
+            analysis=analysis,
+            preview_url=preview_url
         )
         
         print(f"Analysis saved to database with ID: {db_record.id}")
@@ -80,7 +106,8 @@ async def analyze_document(file: UploadFile = File(...), db: Session = Depends(g
             opportunities=analysis.get("opportunities", []),
             strategic_recommendations=analysis.get("strategic_recommendations", []),
             filename=file.filename,
-            pdf_file_url=pdf_file.file_url
+            pdf_file_url=pdf_file.file_url,
+            preview_url=preview_url
         )
 
     except Exception as e:
@@ -90,6 +117,37 @@ async def analyze_document(file: UploadFile = File(...), db: Session = Depends(g
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.post("/notes", response_model=NoteResponse)
+async def create_note(note_data: NoteCreate, db: Session = Depends(get_db)):
+    try:
+        from database import save_note
+        note = save_note(
+            db=db,
+            analysis_id=note_data.analysis_id,
+            selected_text=note_data.selected_text,
+            note_text=note_data.note_text
+        )
+        return NoteResponse(**note.to_dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/notes/{analysis_id}", response_model=NoteResponse)
+async def get_notes(analysis_id: int, db: Session = Depends(get_db)):
+    try:
+        from database import Note
+        note = db.query(Note).filter(Note.analysis_id == analysis_id).first()
+        if not note:
+            return {
+                "id": 0,
+                "analysis_id": analysis_id,
+                "selected_text": "",
+                "note_text": "",
+                "created_at": ""
+            }
+        return NoteResponse(**note.to_dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/analyses")
 async def get_analyses(db: Session = Depends(get_db)):

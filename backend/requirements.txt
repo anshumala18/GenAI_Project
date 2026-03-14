@@ -1,8 +1,10 @@
 fastapi
 uvicorn
 python-multipart
+cloudconvert
 pdfplumber
 python-docx
+python-pptx
 python-dotenv
 groq
 numpy
@@ -12,3 +14,4 @@ langchain-text-splitters
 sqlalchemy
 psycopg2-binary
 alembic
+requests

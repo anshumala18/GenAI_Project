@@ -68,6 +68,7 @@ class DocumentAnalysis(Base):
     opportunities = Column(Text)      # JSON array
     strategic_recommendations = Column(Text)  # JSON array
     is_pinned = Column(Boolean, default=False)
+    preview_url = Column(String, nullable=True)
     
     # Relationship to PDF file
     pdf_file = relationship("PDFFile", back_populates="analyses")
@@ -86,6 +87,7 @@ class DocumentAnalysis(Base):
             "opportunities": json.loads(self.opportunities),
             "strategic_recommendations": json.loads(self.strategic_recommendations),
             "extracted_text": self.extracted_text,
+            "preview_url": self.preview_url,
             "is_pinned": self.is_pinned,
             "created_at": self.created_at.strftime("%Y-%m-%d"),
         }
@@ -98,6 +100,30 @@ class DocumentAnalysis(Base):
             "created_at": self.created_at.strftime("%Y-%m-%d"),
         }
 
+class Note(Base):
+    """Store user notes associated with analyses"""
+    __tablename__ = "notes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    analysis_id = Column(Integer, ForeignKey("document_analyses.id"), unique=True, index=True)
+    selected_text = Column(Text)
+    note_text = Column(Text)
+    
+    analysis = relationship("DocumentAnalysis", back_populates="notes")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "analysis_id": self.analysis_id,
+            "selected_text": self.selected_text,
+            "note_text": self.note_text,
+            "created_at": self.created_at.isoformat(),
+        }
+
+# Update DocumentAnalysis to include notes relationship
+DocumentAnalysis.notes = relationship("Note", back_populates="analysis", cascade="all, delete-orphan")
+
 def get_db():
     db = SessionLocal()
     try:
@@ -105,10 +131,11 @@ def get_db():
     finally:
         db.close()
 
-def save_pdf_file(
+def save_document_file(
     db: Session,
     original_filename: str,
-    file_content: bytes
+    file_content: bytes,
+    mime_type: str = "application/pdf"
 ) -> PDFFile:
     """Save PDF file and return file object with correct URL"""
     import uuid
@@ -133,6 +160,7 @@ def save_pdf_file(
         file_path=file_path,
         file_url=file_url,
         file_size=len(file_content),
+        mime_type=mime_type
     )
     db.add(pdf_file)
     db.commit()
@@ -144,7 +172,8 @@ def save_analysis(
     pdf_file_id: int,
     filename: str,
     extracted_text: str,
-    analysis: dict
+    analysis: dict,
+    preview_url: str = None
 ) -> DocumentAnalysis:
     """Save document analysis to database"""
     doc = DocumentAnalysis(
@@ -155,6 +184,7 @@ def save_analysis(
         key_risks=json.dumps(analysis.get("key_risks", [])),
         opportunities=json.dumps(analysis.get("opportunities", [])),
         strategic_recommendations=json.dumps(analysis.get("strategic_recommendations", [])),
+        preview_url=preview_url
     )
     db.add(doc)
     db.commit()
@@ -225,3 +255,34 @@ def get_pdf_file_by_id(db: Session, pdf_id: int):
 def get_all_pdf_files(db: Session, limit: int = 100):
     """Get all PDF files"""
     return db.query(PDFFile).order_by(PDFFile.created_at.desc()).limit(limit).all()
+
+def save_note(
+    db: Session,
+    analysis_id: int,
+    selected_text: str,
+    note_text: str
+) -> Note:
+    """Save or update user note in database"""
+    # Check if a note already exists for this analysis (one note per analysis)
+    existing_note = db.query(Note).filter(Note.analysis_id == analysis_id).first()
+    
+    if existing_note:
+        existing_note.selected_text = selected_text
+        existing_note.note_text = note_text
+        db.commit()
+        db.refresh(existing_note)
+        return existing_note
+    else:
+        note = Note(
+            analysis_id=analysis_id,
+            selected_text=selected_text,
+            note_text=note_text
+        )
+        db.add(note)
+        db.commit()
+        db.refresh(note)
+        return note
+
+def get_notes_by_analysis_id(db: Session, analysis_id: int):
+    """Retrieve note for a specific analysis"""
+    return db.query(Note).filter(Note.analysis_id == analysis_id).first()
