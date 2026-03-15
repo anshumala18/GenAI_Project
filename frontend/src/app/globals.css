@@ -5,9 +5,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@variant dark (&:where(.dark, .dark *));
-
-:root, .dark {
+:root {
   --background: #fdfdfd;
   --foreground: #111827;
   --card: #ffffff;
@@ -30,28 +28,6 @@
   --radius: 0.75rem;
 }
 
-.dark {
-  --background: #030712 !important;
-  --foreground: #f9fafb !important;
-  --card: #111827 !important;
-  --card-foreground: #f9fafb !important;
-  --popover: #111827 !important;
-  --popover-foreground: #f9fafb !important;
-  --primary: #3b82f6 !important;
-  --primary-foreground: #ffffff !important;
-  --secondary: #1f2937 !important;
-  --secondary-foreground: #f9fafb !important;
-  --muted: #1f2937 !important;
-  --muted-foreground: #9ca3af !important;
-  --accent: #1f2937 !important;
-  --accent-foreground: #f9fafb !important;
-  --destructive: #ef4444 !important;
-  --destructive-foreground: #ffffff !important;
-  --border: #374151 !important;
-  --input: #374151 !important;
-  --ring: #3b82f6 !important;
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
@@ -71,4 +47,15 @@ body {
 
 .dark .enterprise-gradient {
   background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+}
+
+.doc-highlight {
+  background-color: #ffeb3b !important;
+  padding: 2px 4px;
+  border-radius: 3px;
+  display: inline !important;
+  white-space: normal !important;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: #000;
 }

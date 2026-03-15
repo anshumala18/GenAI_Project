@@ -27,7 +27,7 @@ try:
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     
-    print(f"\n📊 Tables in database:")
+    print(f"\nTables in database:")
     for table in tables:
         columns = inspector.get_columns(table)
         print(f"\n  * {table}")

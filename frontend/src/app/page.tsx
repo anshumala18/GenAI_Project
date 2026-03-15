@@ -27,10 +27,11 @@ import {
   Bot,
   Send,
   Download,
-  Sun,
-  Moon
+  LogOut
 } from 'lucide-react';
-import axios from 'axios';
+import { useAuth } from '@/context/AuthContext';
+import api from '@/lib/api';
+import { useRouter } from 'next/navigation';
 
 interface AnalysisResult {
   id?: number;
@@ -60,34 +61,24 @@ export default function Home() {
   const [noteText, setNoteText] = useState("");
   const [selectedText, setSelectedText] = useState("");
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [activeMode, setActiveMode] = useState<'analyze' | 'ask'>('analyze');
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
+  const [isAsking, setIsAsking] = useState(false);
   const [notes, setNotes] = useState<any[]>([]);
   const [selectedDocument, setSelectedDocument] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { token, isAuthenticated, isLoading, logout } = useAuth();
+  const router = useRouter();
 
-  // Initialize theme from localStorage
+  // AUTH PROTECTION: Redirect to login if not authenticated
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    setIsDarkMode(savedTheme === 'dark');
-  }, []);
-
-  // Sync theme class with isDarkMode state
-  useEffect(() => {
-    console.log("🌓 Theme Sync - isDarkMode:", isDarkMode);
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+    if (!isLoading && !isAuthenticated) {
+      router.push('/login');
     }
-  }, [isDarkMode]);
+  }, [isLoading, isAuthenticated, router]);
 
-  const toggleTheme = () => {
-    console.log("button clicked - current state:", isDarkMode);
-    setIsDarkMode(!isDarkMode);
-  };
+  // Auth header config - REMOVED (Handled by api interceptor)
 
   // Auto-clear toast
   useEffect(() => {
@@ -107,12 +98,12 @@ export default function Home() {
   const fetchNotes = async (analysisId: number) => {
     try {
       console.log(`🔍 Fetching notes for analysis: ${analysisId}`);
-      const response = await axios.get(`http://127.0.0.1:8000/notes/${analysisId}`);
-      // API now returns a single object.
-      if (response.data && response.data.id !== 0) {
-        console.log("✅ Note found:", response.data.note_text);
-        setNotes([response.data]);
-        setNoteText(response.data.note_text || "");
+      const response = await api.get(`http://localhost:8000/notes/${analysisId}`);
+      
+      if (response.data && response.data.length > 0) {
+        console.log("✅ Note found:", response.data[0].note_text);
+        setNotes(response.data);
+        setNoteText(response.data[0].note_text || "");
       } else {
         console.log("ℹ️ No note found for this analysis.");
         setNotes([]);
@@ -153,7 +144,7 @@ export default function Home() {
   const fetchHistory = async () => {
     try {
       setLoadingHistory(true);
-      const response = await axios.get('http://127.0.0.1:8000/analyses');
+      const response = await api.get('http://localhost:8000/analyses');
       setHistory(response.data);
     } catch (err) {
       console.error('Failed to fetch history:', err);
@@ -165,7 +156,7 @@ export default function Home() {
   const togglePin = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
     try {
-      await axios.post(`http://127.0.0.1:8000/analysis/${id}/pin`);
+      await api.post(`http://localhost:8000/analysis/${id}/pin`, {});
       fetchHistory();
       setActiveMenuId(null);
     } catch (err) {
@@ -177,7 +168,7 @@ export default function Home() {
     e.stopPropagation();
     if (window.confirm("Are you sure you want to delete this analysis? This will also remove the PDF file from the database.")) {
       try {
-        await axios.delete(`http://127.0.0.1:8000/analysis/${id}`);
+        await api.delete(`http://localhost:8000/analysis/${id}`);
         if (selectedDocument?.id === id) {
           setSelectedDocument(null);
         }
@@ -280,7 +271,11 @@ export default function Home() {
     const text = selection?.toString().trim() || "";
     setSelectedText(text);
     
-    // Note: noteText is already pre-fetched in fetchNotes when document was selected
+    // Explicitly fetch notes when opening to ensure they are loaded
+    if (selectedDocument?.id) {
+      await fetchNotes(selectedDocument.id);
+    }
+    
     console.log("📂 Opening note popup with text:", noteText);
     setIsNotePopupOpen(true);
   };
@@ -289,7 +284,7 @@ export default function Home() {
     if (!selectedDocument?.id) return;
     
     try {
-      await axios.post("http://127.0.0.1:8000/notes", {
+      await api.post("http://localhost:8000/notes", {
         analysis_id: selectedDocument.id,
         selected_text: selectedText,
         note_text: noteText
@@ -421,6 +416,26 @@ export default function Home() {
     }
   };
 
+  const handleAskDocAI = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!docAIQuestion.trim() || isAsking) return;
+
+    const userMsg = docAIQuestion.trim();
+    setChatMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setDocAIQuestion("");
+    setIsAsking(true);
+
+    try {
+      const response = await api.post('http://localhost:8000/ask', { question: userMsg });
+      setChatMessages(prev => [...prev, { role: 'assistant', content: response.data.answer }]);
+    } catch (err) {
+      console.error('RAG Error:', err);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I encountered an error while processing your request." }]);
+    } finally {
+      setIsAsking(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
@@ -465,10 +480,7 @@ export default function Home() {
 
     try {
       console.log('📤 Uploading document for analysis...');
-      const response = await axios.post('http://127.0.0.1:8000/analyze', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 300000,
-      });
+      const response = await api.post('http://localhost:8000/analyze', formData);
 
       const data = response.data;
       console.log('✅ Analysis complete:', data);
@@ -480,9 +492,13 @@ export default function Home() {
       // Update with the official server-side URL and analysis
       setSelectedDocument({
         ...data,
-        pdf_file_url: data.pdf_file_url?.replace('localhost', '127.0.0.1'),
-        preview_url: data.preview_url?.replace('localhost', '127.0.0.1')
+        pdf_file_url: data.pdf_file_url?.replace('127.0.0.1', 'localhost'),
+        preview_url: data.preview_url?.replace('127.0.0.1', 'localhost')
       });
+
+      // Reset UI state for new document
+      setActiveMode('analyze');
+      setChatMessages([]);
 
       fetchHistory(); // Refresh history list
     } catch (err: any) {
@@ -504,17 +520,21 @@ export default function Home() {
     setFile(null);
 
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/analysis/${id}`);
+      const response = await api.get(`http://localhost:8000/analysis/${id}`);
       const data = response.data;
 
-      // Ensure the URL uses 127.0.0.1 for consistency
+      // Ensure the URL uses localhost for consistency
       const updatedData = {
         ...data,
-        pdf_file_url: data.pdf_file_url?.replace('localhost', '127.0.0.1'),
-        preview_url: data.preview_url?.replace('localhost', '127.0.0.1')
+        pdf_file_url: data.pdf_file_url?.replace('127.0.0.1', 'localhost'),
+        preview_url: data.preview_url?.replace('127.0.0.1', 'localhost')
       };
 
       setSelectedDocument(updatedData);
+      
+      // Reset UI state for new document
+      setActiveMode('analyze');
+      setChatMessages([]);
     } catch (err: any) {
       console.error('History load error:', err);
       setError('Failed to load historical analysis.');
@@ -530,6 +550,8 @@ export default function Home() {
     setError(null);
     setNoteText("");
     setNotes([]);
+    setActiveMode('analyze');
+    setChatMessages([]);
   };
 
   const filteredHistory = useMemo(() => {
@@ -538,14 +560,25 @@ export default function Home() {
     );
   }, [history, searchQuery]);
 
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-white">
+        <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
+        <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Initializing Secure Session...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return null;
+
   return (
-    <main className="h-screen w-screen bg-white dark:bg-gray-950 flex flex-col overflow-hidden text-gray-900 dark:text-gray-100 font-sans">
+    <main className="h-screen w-screen bg-white flex flex-col overflow-hidden text-gray-900 font-sans">
       {/* Header */}
-      <header className="h-14 px-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 shrink-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md z-20">
+      <header className="h-14 px-4 flex items-center justify-between border-b border-gray-200 shrink-0 bg-white/80 backdrop-blur-md z-20">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+            className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
             title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
           >
             {isSidebarOpen ? <ChevronLeft className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
@@ -554,20 +587,31 @@ export default function Home() {
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
               <ShieldAlert className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-lg font-bold tracking-tight">
-              Doc<span className="text-blue-600 dark:text-blue-400">AI</span>
+            <h1 className="flex items-center gap-2 tracking-tight">
+              <span className="text-xl font-extrabold uppercase tracking-tight">Doc<span className="text-blue-600">AI</span></span>
+              <span className="text-gray-300 font-light">—</span>
+              <span className="text-[13px] text-gray-500 font-medium uppercase tracking-[0.1em] mt-0.5">Enterprise Document Intelligence</span>
             </h1>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={toggleTheme}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all text-gray-500 dark:text-gray-400"
-            title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          >
-            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-500" /> : <Moon className="w-5 h-5" />}
-          </button>
+          {selectedDocument && (
+            <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200 mr-2">
+              <button
+                onClick={() => setActiveMode('analyze')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeMode === 'analyze' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Analyze
+              </button>
+              <button
+                onClick={() => setActiveMode('ask')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeMode === 'ask' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Ask DocAI
+              </button>
+            </div>
+          )}
           
           {selectedDocument && (
             <motion.button
@@ -580,6 +624,14 @@ export default function Home() {
               New Analysis
             </motion.button>
           )}
+
+          <button
+            onClick={logout}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-red-500 transition-all ml-1"
+            title="Logout"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
@@ -593,10 +645,10 @@ export default function Home() {
             x: isSidebarOpen ? 0 : -260
           }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="h-full border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex flex-col shrink-0 overflow-hidden"
+          className="h-full border-r border-gray-200 bg-gray-50 flex flex-col shrink-0 overflow-hidden"
         >
           <div className="p-4 w-[260px] flex-1 flex flex-col min-h-0">
-            <div className="flex items-center gap-2 mb-4 text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-2 mb-4 text-gray-500">
               <History className="w-4 h-4" />
               <span className="text-xs font-bold uppercase tracking-widest">Previous Analyses</span>
             </div>
@@ -609,7 +661,7 @@ export default function Home() {
                 placeholder="Search past analyses..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                className="w-full bg-white border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
               />
             </div>
 
@@ -625,14 +677,14 @@ export default function Home() {
                     <button
                       onClick={() => loadFromHistory(item.id)}
                       className={`w-full text-left p-3 rounded-xl border transition-all ${selectedDocument?.id === item.id
-                        ? 'border-blue-500/50 bg-blue-50/50 dark:bg-blue-900/20'
-                        : 'border-transparent hover:bg-white dark:hover:bg-gray-900'
+                        ? 'border-blue-500/50 bg-blue-50/50'
+                        : 'border-transparent hover:bg-white'
                         }`}
                     >
                       <div className="flex items-start gap-3">
                         <FileText className={`w-4 h-4 mt-0.5 shrink-0 ${selectedDocument?.id === item.id ? 'text-blue-500' : 'text-gray-400'}`} />
                         <div className="flex-1 min-w-0 pr-6">
-                          <p className={`text-sm font-semibold truncate ${selectedDocument?.id === item.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                          <p className={`text-sm font-semibold truncate ${selectedDocument?.id === item.id ? 'text-blue-600' : 'text-gray-700'}`}>
                             {item.filename}
                           </p>
                           <div className="flex items-center gap-2 mt-1">
@@ -649,7 +701,7 @@ export default function Home() {
                         e.stopPropagation();
                         setActiveMenuId(activeMenuId === item.id ? null : item.id);
                       }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover/item:opacity-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-all text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 z-10"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover/item:opacity-100 hover:bg-gray-100 rounded-md transition-all text-gray-400 hover:text-gray-600 z-10"
                     >
                       <MoreVertical className="w-4 h-4" />
                     </button>
@@ -661,19 +713,19 @@ export default function Home() {
                           initial={{ opacity: 0, scale: 0.95, y: 5 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                          className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-[100] py-1.5"
+                          className="absolute right-0 top-full mt-1 w-32 bg-white border border-gray-200 rounded-xl shadow-xl z-[100] py-1.5"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
                             onClick={(e) => togglePin(e, item.id)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
                           >
                             <Pin className={`w-3.5 h-3.5 ${item.is_pinned ? 'fill-blue-500 text-blue-500' : ''}`} />
                             {item.is_pinned ? 'Unpin' : 'Pin'}
                           </button>
                           <button
                             onClick={(e) => deleteAnalysis(e, item.id)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             Delete
@@ -690,7 +742,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-900 bg-gray-50 dark:bg-gray-950">
+            <div className="mt-auto pt-4 border-t border-gray-100 bg-gray-50">
               <button
                 onClick={reset}
                 className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors"
@@ -703,11 +755,11 @@ export default function Home() {
         </motion.aside>
 
         {/* Workspace: Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-gray-950 relative">
+        <div className="flex-1 flex flex-col min-w-0 bg-white relative">
           {!selectedDocument && !analyzing ? (
             <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
               <div className="max-w-md w-full">
-                <div className="w-16 h-16 bg-blue-600/10 dark:bg-blue-600/20 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                <div className="w-16 h-16 bg-blue-600/10 rounded-2xl flex items-center justify-center mb-6 mx-auto">
                   <Upload className="w-8 h-8 text-blue-600" />
                 </div>
                 <h2 className="text-2xl font-extrabold mb-3">Enterprise Insight Engine</h2>
@@ -723,9 +775,9 @@ export default function Home() {
                 </label>
 
                 {error && (
-                  <div className="mt-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl flex items-start gap-3 text-left">
+                  <div className="mt-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-left">
                     <AlertCircle className="w-5 h-5 text-red-500 translate-y-0.5" />
-                    <p className="text-xs font-medium text-red-700 dark:text-red-400 leading-tight">{error}</p>
+                    <p className="text-xs font-medium text-red-700 leading-tight">{error}</p>
                   </div>
                 )}
               </div>
@@ -733,10 +785,10 @@ export default function Home() {
           ) : (
             <div className="flex-1 flex min-h-0">
               {/* Split View: Insights (Left) and PDF (Right) */}
-              <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 min-h-0 bg-white dark:bg-gray-950">
+              <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 min-h-0 bg-white">
 
                 {/* Insights Panel */}
-                <div className="h-full flex flex-col min-h-0 border-r border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 overflow-hidden">
+                <div className="h-full flex flex-col min-h-0 border-r border-gray-200 bg-gray-50/50 overflow-hidden">
                   <AnimatePresence mode="wait">
                     {analyzing ? (
                       <motion.div
@@ -747,7 +799,7 @@ export default function Home() {
                         className="h-full flex flex-col items-center justify-center p-8"
                       >
                         <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-4" />
-                        <p className="text-sm font-bold animate-pulse text-gray-600 dark:text-gray-400">Synthesizing intelligence...</p>
+                        <p className="text-sm font-bold animate-pulse text-gray-600">Synthesizing intelligence...</p>
                       </motion.div>
                     ) : selectedDocument?.executive_summary.length === 0 ? (
                       <motion.div
@@ -756,10 +808,10 @@ export default function Home() {
                         animate={{ opacity: 1 }}
                         className="h-full flex flex-col items-center justify-center p-8 text-center"
                       >
-                        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mb-4">
+                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                           <Lightbulb className="w-8 h-8 text-blue-600" />
                         </div>
-                        <h3 className="font-bold text-lg mb-2 truncate max-w-full px-4">{selectedDocument.filename}</h3>
+                        <h3 className="font-bold text-lg mb-2 truncate max-w-full px-4">{selectedDocument?.filename}</h3>
                         <p className="text-xs text-gray-500 mb-6 font-medium">Ready to process document for strategic insights.</p>
                         <button
                           onClick={handleUpload}
@@ -775,155 +827,191 @@ export default function Home() {
                         animate={{ opacity: 1, x: 0 }}
                         className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar space-y-4"
                       >
-                        {/* Annotation Toolbar */}
-                        <div className={`bg-gray-100/80 dark:bg-gray-800/80 backdrop-blur-sm p-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm sticky top-0 z-10 transition-all duration-300 w-full flex items-center ${!isSidebarOpen ? 'justify-between' : ''}`}>
-                          <div className="flex-1 flex flex-wrap items-center gap-2.5 w-full toolbar-actions">
-                            <button 
-                              onClick={handleHighlight}
-                              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-900 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-500 hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 flex-grow max-w-[180px]"
-                            >
-                              <Highlighter className="w-3.5 h-3.5 text-yellow-500" /> Highlight
-                            </button>
-                            <button 
-                              onClick={handleEraseHighlight}
-                              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-900 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-red-500 hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 flex-grow max-w-[180px]"
-                            >
-                              <Eraser className="w-3.5 h-3.5 text-gray-500" /> Erase
-                            </button>
-                            <button 
-                              onClick={openNotePopup}
-                              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex-grow max-w-[180px] hover:shadow-md hover:-translate-y-0.5 ${noteText ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-emerald-500'}`}
-                            >
-                              {noteText ? (
-                                <><StickyNote className="w-3.5 h-3.5 text-emerald-500" /> Add Note</>
-                              ) : (
-                                <><Plus className="w-3.5 h-3.5 text-emerald-500" /> Add Note</>
+                        {activeMode === 'analyze' ? (
+                          <>
+                            {/* Annotation Toolbar */}
+                            <div className={`bg-gray-100/80 backdrop-blur-sm p-2 rounded-xl border border-gray-200 shadow-sm sticky top-0 z-10 transition-all duration-300 w-full flex items-center ${!isSidebarOpen ? 'justify-between' : ''}`}>
+                              <div className="flex-1 flex flex-wrap items-center gap-2.5 w-full toolbar-actions">
+                                <button 
+                                  onClick={handleHighlight}
+                                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white rounded-lg text-xs font-bold text-gray-700 border border-gray-200 hover:border-blue-500 hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 flex-grow max-w-[180px]"
+                                >
+                                  <Highlighter className="w-3.5 h-3.5 text-yellow-500" /> Highlight
+                                </button>
+                                <button 
+                                  onClick={handleEraseHighlight}
+                                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white rounded-lg text-xs font-bold text-gray-700 border border-gray-200 hover:border-red-500 hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 flex-grow max-w-[180px]"
+                                >
+                                  <Eraser className="w-3.5 h-3.5 text-gray-500" /> Erase
+                                </button>
+                                <button 
+                                  onClick={openNotePopup}
+                                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex-grow max-w-[180px] hover:shadow-md hover:-translate-y-0.5 ${noteText ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-500'}`}
+                                >
+                                  {noteText ? (
+                                    <><StickyNote className="w-3.5 h-3.5 text-emerald-500" /> Add Note</>
+                                  ) : (
+                                    <><Plus className="w-3.5 h-3.5 text-emerald-500" /> Add Note</>
+                                  )}
+                                </button>
+                                
+                                <button 
+                                  onClick={handleExportPDF}
+                                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white rounded-lg text-xs font-bold text-gray-700 border border-gray-200 hover:border-blue-500 hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 flex-grow max-w-[180px]"
+                                >
+                                  <Download className="w-3.5 h-3.5 text-blue-600" /> Export PDF
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Summary */}
+                            <section className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+                              <div className="flex items-center gap-2.5 mb-5">
+                                <FileText className="w-4 h-4 text-blue-600" />
+                                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Executive Summary</h4>
+                              </div>
+                              <div className="space-y-3">
+                                {selectedDocument?.executive_summary.map((point, i) => (
+                                  <div key={i} className="flex gap-4 p-3.5 bg-gray-50 rounded-xl text-sm font-medium leading-relaxed">
+                                    <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
+                                    <div className="flex-1">{point}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+
+                            <div className="grid grid-cols-1 gap-4">
+                              <section className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+                                <div className="flex items-center gap-2.5 mb-4">
+                                  <ShieldAlert className="w-4 h-4 text-red-600" />
+                                  <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Critical Risks</h4>
+                                </div>
+                                <div className="space-y-2">
+                                  {selectedDocument?.key_risks.map((risk, i) => (
+                                    <div key={i} className="text-xs p-3 bg-red-50/50 text-red-700 rounded-lg border border-red-100 font-semibold flex gap-2">
+                                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                      <div className="flex-1">{risk}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </section>
+
+                              <section className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+                                <div className="flex items-center gap-2.5 mb-4">
+                                  <TrendingUp className="w-4 h-4 text-emerald-600" />
+                                  <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Growth Opportunities</h4>
+                                </div>
+                                <div className="space-y-2">
+                                  {selectedDocument?.opportunities.map((opp, i) => (
+                                    <div key={i} className="text-xs p-3 bg-emerald-50/50 text-emerald-700 rounded-lg border border-emerald-100 font-semibold flex gap-2">
+                                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                      <div className="flex-1">{opp}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </section>
+                            </div>
+
+                            <section className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+                              <div className="flex items-center gap-2.5 mb-4">
+                                <Lightbulb className="w-4 h-4 text-amber-600" />
+                                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Strategic Recommendations</h4>
+                              </div>
+                              <div className="space-y-2.5">
+                                {selectedDocument?.strategic_recommendations.map((rec, i) => (
+                                  <div key={i} className="text-sm p-3.5 bg-amber-50/30 text-gray-700 rounded-xl border border-amber-100 font-medium">
+                                    {rec}
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+                          </>
+                        ) : (
+                          <div className="h-full flex flex-col min-h-0 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-lg">
+                            {/* Chat Header */}
+                            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                                  <Bot className="w-5 h-5 text-white" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h3 className="text-sm font-bold truncate">Ask DocAI</h3>
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest truncate">Active Document: {selectedDocument?.filename}</p>
+                                </div>
+                              </div>
+                              {chatMessages.length > 0 && (
+                                <button 
+                                  onClick={() => setChatMessages([])}
+                                  className="text-[10px] font-bold text-gray-400 hover:text-red-500 uppercase tracking-widest transition-colors flex items-center gap-1.5 shrink-0"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  Clear Chat
+                                </button>
                               )}
-                            </button>
-                            
-                            <button 
-                              onClick={() => setAskDocAIOpen(!askDocAIOpen)}
-                              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex-grow max-w-[180px] hover:shadow-md hover:-translate-y-0.5 ${askDocAIOpen ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-500'}`}
-                            >
-                              <Bot className={`w-3.5 h-3.5 ${askDocAIOpen ? 'text-white' : 'text-blue-600'}`} /> Ask DocAI
-                            </button>
-
-                            <button 
-                              onClick={handleExportPDF}
-                              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-900 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-500 hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 flex-grow max-w-[180px]"
-                            >
-                              <Download className="w-3.5 h-3.5 text-blue-600" /> Export PDF
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Ask DocAI Input Box */}
-                        <AnimatePresence>
-                          {askDocAIOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -10 }}
-                              className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 p-3 rounded-2xl flex gap-2"
-                            >
-                              <input
-                                type="text"
-                                placeholder="Ask something about this document..."
-                                value={docAIQuestion}
-                                onChange={(e) => setDocAIQuestion(e.target.value)}
-                                className="flex-1 bg-white dark:bg-gray-900 border border-blue-100 dark:border-blue-900/30 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
-                                onKeyPress={(e) => e.key === 'Enter' && alert('Question submitted: ' + docAIQuestion)}
-                              />
-                              <button 
-                                onClick={() => alert('Question submitted: ' + docAIQuestion)}
-                                className="bg-blue-600 text-white p-2 rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20"
-                              >
-                                <Send className="w-4 h-4" />
-                              </button>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        {/* Summary */}
-                        <section className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm">
-                          <div className="flex items-center gap-2.5 mb-5">
-                            <FileText className="w-4 h-4 text-blue-600" />
-                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Executive Summary</h4>
-                          </div>
-                          <div className="space-y-3">
-                            {selectedDocument?.executive_summary.map((point, i) => (
-                              <div key={i} className="flex gap-4 p-3.5 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-sm font-medium leading-relaxed">
-                                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
-                                <div className="flex-1">
-                                  {point}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-
-                        {/* Risks & Opportunities */}
-                        <div className="grid grid-cols-1 gap-4">
-                          <section className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm">
-                            <div className="flex items-center gap-2.5 mb-4">
-                              <ShieldAlert className="w-4 h-4 text-red-600" />
-                              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Critical Risks</h4>
                             </div>
-                            <div className="space-y-2">
-                              {selectedDocument?.key_risks.map((risk, i) => (
-                                <div key={i} className="text-xs p-3 bg-red-50/50 dark:bg-red-900/10 text-red-700 dark:text-red-400 rounded-lg border border-red-100 dark:border-red-900/20 font-semibold flex gap-2">
-                                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                                  <div className="flex-1">
-                                    {risk}
+
+                            {/* Message List */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                              {chatMessages.length === 0 && (
+                                <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                                  <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+                                    <Bot className="w-6 h-6 text-blue-600" />
+                                  </div>
+                                  <p className="text-sm font-bold text-gray-700 mb-2">Ask anything about this document</p>
+                                  <p className="text-xs text-gray-400 font-medium leading-relaxed">
+                                    I'll use the document content to provide accurate answers.
+                                  </p>
+                                </div>
+                              )}
+                              {chatMessages.map((msg, i) => (
+                                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                  <div className={`${msg.role === 'user' ? 'max-w-[65%] p-2.5 px-4 bg-blue-600 text-white rounded-2xl rounded-tr-none' : 'max-w-[75%] p-3 bg-gray-50 border border-gray-100 text-gray-700 rounded-2xl rounded-tl-none shadow-sm'} text-sm font-medium leading-relaxed`}>
+                                    {msg.content}
                                   </div>
                                 </div>
                               ))}
-                            </div>
-                          </section>
-
-                          <section className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm">
-                            <div className="flex items-center gap-2.5 mb-4">
-                              <TrendingUp className="w-4 h-4 text-emerald-600" />
-                              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Growth Opportunities</h4>
-                            </div>
-                            <div className="space-y-2">
-                              {selectedDocument?.opportunities.map((opp, i) => (
-                                <div key={i} className="text-xs p-3 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 rounded-lg border border-emerald-100 dark:border-emerald-900/20 font-semibold flex gap-2">
-                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                  <div className="flex-1">
-                                    {opp}
+                              {isAsking && (
+                                <div className="flex justify-start">
+                                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-2xl shadow-sm">
+                                    <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                                   </div>
                                 </div>
-                              ))}
+                              )}
                             </div>
-                          </section>
-                        </div>
 
-                        {/* Recommendations */}
-                        <section className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm">
-                          <div className="flex items-center gap-2.5 mb-4">
-                            <Lightbulb className="w-4 h-4 text-amber-600" />
-                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">Strategic Recommendations</h4>
-                          </div>
-                          <div className="space-y-2.5">
-                            {selectedDocument?.strategic_recommendations.map((rec, i) => (
-                              <div key={i} className="text-sm p-3.5 bg-amber-50/30 dark:bg-amber-900/5 text-gray-700 dark:text-gray-300 rounded-xl border border-amber-100 dark:border-amber-900/20 font-medium">
-                                {rec}
+                            {/* Chat Input */}
+                            <form onSubmit={handleAskDocAI} className="p-4 border-t border-gray-100 bg-gray-50/50">
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  placeholder="Ask about this document..."
+                                  value={docAIQuestion}
+                                  onChange={(e) => setDocAIQuestion(e.target.value)}
+                                  disabled={isAsking}
+                                  className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm"
+                                />
+                                <button 
+                                  type="submit"
+                                  disabled={!docAIQuestion.trim() || isAsking}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all disabled:bg-gray-200 shadow-md shadow-blue-500/10"
+                                >
+                                  {isAsking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                </button>
                               </div>
-                            ))}
+                            </form>
                           </div>
-                        </section>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
                 {/* PDF Viewer Panel */}
-                <div className="h-full bg-gray-100 dark:bg-gray-950 flex flex-col min-h-0 relative">
+                <div className="h-full bg-gray-100 flex flex-col min-h-0 relative">
                   {/* Debugging: Preview Viewer Render event */}
                   {(selectedDocument?.preview_url || selectedDocument?.pdf_file_url) ? (
                     <div className="h-full flex flex-col">
-                      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-widest shrink-0">
+                      <div className="px-4 py-2 border-b border-gray-200 bg-white flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-widest shrink-0">
                         <div className="flex items-center gap-2 truncate pr-4">
                           <FileText className="w-3 h-3" />
                           <span className="truncate">{selectedDocument.filename}</span>
@@ -947,8 +1035,8 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center text-gray-500 bg-white">
-                      <FileText className="w-12 h-12 text-gray-200 dark:text-gray-800 mb-6" />
-                      <p className="font-bold text-gray-300 dark:text-gray-700 uppercase tracking-[0.2em] text-xs">No PDF Loaded</p>
+                      <FileText className="w-12 h-12 text-gray-200 mb-6" />
+                      <p className="font-bold text-gray-300 uppercase tracking-[0.2em] text-xs">No PDF Loaded</p>
                     </div>
                   )}
                 </div>
@@ -959,7 +1047,7 @@ export default function Home() {
       </div>
 
       {/* Footer / Status */}
-      <footer className="h-8 border-t border-gray-200 dark:border-gray-800 px-4 flex items-center justify-between bg-gray-50 dark:bg-gray-950 text-[10px] font-bold text-gray-400 uppercase tracking-widest shrink-0">
+      <footer className="h-8 border-t border-gray-200 px-4 flex items-center justify-between bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest shrink-0">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${loadingHistory ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
@@ -971,7 +1059,7 @@ export default function Home() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {selectedDocument && <span className="text-gray-500">{selectedDocument.filename}</span>}
+          {selectedDocument && <span className="text-gray-500">{selectedDocument?.filename}</span>}
           <span className="text-blue-500">
             {analyzing ? 'ANALYSIS IN PROGRESS...' : 'SYSTEM READY'}
           </span>
@@ -993,11 +1081,11 @@ export default function Home() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden"
+              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden"
             >
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
                     <StickyNote className="w-5 h-5 text-emerald-600" />
                   </div>
                   <div>
@@ -1011,7 +1099,7 @@ export default function Home() {
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
                   placeholder="Write your thoughts, insights, or reminders..."
-                  className="w-full h-48 mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-white resize-none"
+                  className="w-full h-48 mt-4 p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
                 />
 
                 <div className="flex gap-3 mt-6">
@@ -1019,7 +1107,7 @@ export default function Home() {
                     onClick={() => {
                       setIsNotePopupOpen(false);
                     }}
-                    className="flex-1 py-3 px-4 rounded-xl font-bold text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    className="flex-1 py-3 px-4 rounded-xl font-bold text-sm text-gray-500 hover:bg-gray-100 transition-colors"
                   >
                     Cancel
                   </button>
@@ -1054,23 +1142,6 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Custom Styles */}
-      <style jsx global>{`
-        .doc-highlight {
-          background-color: #ffeb3b !important; /* User requested yellow */
-          padding: 2px 4px;
-          border-radius: 3px;
-          display: inline !important;
-          white-space: normal !important;
-          box-decoration-break: clone;
-          -webkit-box-decoration-break: clone;
-          color: #000;
-        }
-        .dark .doc-highlight {
-          background-color: #facc15 !important;
-          color: #000;
-        }
-      `}</style>
     </main>
   );
 }

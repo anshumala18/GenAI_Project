@@ -26,6 +26,24 @@ UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
+class User(Base):
+    """Store users and their credentials"""
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "email": self.email,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat(),
+        }
+
 class PDFFile(Base):
     """Store PDF files and their metadata"""
     __tablename__ = "pdf_files"
@@ -105,16 +123,19 @@ class Note(Base):
     __tablename__ = "notes"
     
     id = Column(Integer, primary_key=True, index=True)
-    analysis_id = Column(Integer, ForeignKey("document_analyses.id"), unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    analysis_id = Column(Integer, ForeignKey("document_analyses.id"), index=True)
     selected_text = Column(Text)
     note_text = Column(Text)
     
+    user = relationship("User")
     analysis = relationship("DocumentAnalysis", back_populates="notes")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "analysis_id": self.analysis_id,
             "selected_text": self.selected_text,
             "note_text": self.note_text,
@@ -122,7 +143,11 @@ class Note(Base):
         }
 
 # Update DocumentAnalysis to include notes relationship
-DocumentAnalysis.notes = relationship("Note", back_populates="analysis", cascade="all, delete-orphan")
+DocumentAnalysis.notes = relationship(
+    "Note",
+    back_populates="analysis",
+    cascade="all, delete-orphan"
+)
 
 def get_db():
     db = SessionLocal()
@@ -258,31 +283,26 @@ def get_all_pdf_files(db: Session, limit: int = 100):
 
 def save_note(
     db: Session,
+    user_id: int,
     analysis_id: int,
     selected_text: str,
     note_text: str
-) -> Note:
-    """Save or update user note in database"""
-    # Check if a note already exists for this analysis (one note per analysis)
-    existing_note = db.query(Note).filter(Note.analysis_id == analysis_id).first()
-    
-    if existing_note:
-        existing_note.selected_text = selected_text
-        existing_note.note_text = note_text
-        db.commit()
-        db.refresh(existing_note)
-        return existing_note
-    else:
-        note = Note(
-            analysis_id=analysis_id,
-            selected_text=selected_text,
-            note_text=note_text
-        )
-        db.add(note)
-        db.commit()
-        db.refresh(note)
-        return note
+):
+    """Save user note in database (allows multiple notes)"""
+    new_note = Note(
+        user_id=user_id,
+        analysis_id=analysis_id,
+        selected_text=selected_text,
+        note_text=note_text
+    )
+    db.add(new_note)
+    db.commit()
+    db.refresh(new_note)
+    return new_note
 
-def get_notes_by_analysis_id(db: Session, analysis_id: int):
-    """Retrieve note for a specific analysis"""
-    return db.query(Note).filter(Note.analysis_id == analysis_id).first()
+def get_notes_by_analysis_id(db: Session, analysis_id: int, user_id: int):
+    """Retrieve all notes for a specific analysis and user"""
+    return db.query(Note).filter(
+        Note.analysis_id == analysis_id,
+        Note.user_id == user_id
+    ).all()

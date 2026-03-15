@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 
 class AnalysisResponse(BaseModel):
     executive_summary: List[str]
@@ -23,4 +24,31 @@ class NoteResponse(BaseModel):
     analysis_id: int
     selected_text: Optional[str] = ""
     note_text: str
-    created_at: str
+    created_at: datetime
+
+class QuestionRequest(BaseModel):
+    question: str
+
+class ChatResponse(BaseModel):
+    answer: str
+
+class UserBase(BaseModel):
+    email: str
+
+class UserCreate(UserBase):
+    password: str
+
+class UserResponse(UserBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
