@@ -9,11 +9,12 @@ import { ShieldAlert, Mail, Lock, Loader2, ArrowRight, CheckCircle2 } from 'luci
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const { login: setAuthToken } = useAuth();
+  const { login: setAuthContext } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,10 +29,11 @@ export default function LoginPage() {
         formData.append('password', password);
 
         const response = await api.post('http://localhost:8000/login', formData);
-        setAuthToken(response.data.access_token);
+        setAuthContext(response.data.access_token, response.data.user);
       } else {
         // Register flow
-        await api.post('http://localhost:8000/register', { email, password });
+        console.log("DEBUG: Sending signup request:", { name, email });
+        await api.post('http://localhost:8000/register', { name, email, password });
         setSuccess(true);
         setTimeout(() => {
           setIsLogin(true);
@@ -104,6 +106,21 @@ export default function LoginPage() {
               className="space-y-6"
             >
               <div className="space-y-4">
+                {!isLogin && (
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <div className="w-5 h-5 flex items-center justify-center text-gray-300 group-focus-within:text-blue-500 transition-colors font-bold text-xs">A</div>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Full Name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full bg-gray-50 border-2 border-transparent focus:border-blue-600 focus:bg-white rounded-2xl pl-12 pr-4 py-4 text-sm font-semibold transition-all outline-none text-gray-900"
+                    />
+                  </div>
+                )}
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Mail className="w-5 h-5 text-gray-300 group-focus-within:text-blue-500 transition-colors" />

@@ -1,79 +1,111 @@
-# DocAI: Enterprise Document Intelligence Generator
+# 📄 DocAI: Enterprise Document Intelligence Platform
 
-A high-performance intelligence workspace that transforms complex business documents (PDF/DOCX) into actionable strategic insights using a custom RAG (Retrieval-Augmented Generation) pipeline.
+**DocAI** is a high-performance, AI-driven intelligence workspace designed to transform complex business documents (PDF, DOCX, PPTX) into actionable strategic insights. Leveraging a custom **RAG (Retrieval-Augmented Generation)** pipeline, it provides deep analysis, risk assessment, and smart internal document search.
 
 ---
 
-## 🛠 Tech Stack & Libraries
+## 🚀 Key Features
 
-### Frontend (User Interface)
+### 🧠 Advanced Intelligence Engine
+- **Strategic Analysis**: Generates Executive Summaries, Critical Risks, Growth Opportunities, and Actionable Recommendations.
+- **Multi-Format Support**: Processes PDFs, Word Documents (`.docx`), and PowerPoint Presentations (`.pptx`).
+- **Interactive RAG Chat**: Ask specific questions about your document and get context-aware answers instantly.
+
+### 👤 Premium User Experience
+- **Secure Authentication**: Built-in login and registration system with user-specific data isolation.
+- **Profile Management**: Personalized user avatars and profile dropdowns.
+- **Smart History Sidebar**: Search, pin, and manage your past document analyses.
+
+### 🎨 Modern UI/UX
+- **Glassmorphic Design**: A stunning, premium interface built with Tailwind CSS and Framer Motion.
+- **Dual-Mode Aesthetics**: Sophisticated Dark and Light modes with persistence.
+- **Integrated Document Viewer**: Professional-grade previewer for seamless analysis.
+
+---
+
+## 🛠 Tech Stack
+
+### Frontend
 - **Framework**: Next.js 15 (App Router)
-- **Styling**: Tailwind CSS (Glassmorphism & Dark Mode)
-- **Animations**: Framer Motion (Smooth transitions & sidebar toggles)
-- **Icons**: Lucide React (Premium iconography)
-- **Data Fetching**: Axios (API communication)
+- **Styling**: Tailwind CSS, Lucide Icons
+- **State Management**: React Context API
+- **Animations**: Framer Motion
 
-### Backend (Logic & PDF Processing)
-- **Framework**: FastAPI (High-performance Python API)
-- **Server**: Uvicorn (ASGI implementation)
-- **Database ORM**: SQLAlchemy (PostgreSQL driver)
-- **File Handling**: python-multipart, PyPDF2, python-docx
-- **Environment**: python-dotenv
+### Backend
+- **Core**: FastAPI (Python 3.10+)
+- **Database**: PostgreSQL with SQLAlchemy ORM
+- **OCR & Processing**: CloudConvert API, PyPDF2, python-docx
+- **Authentication**: JWT (JSON Web Tokens) with Passlib
 
-### Artificial Intelligence & Vector Engine
-- **LLM**: Llama 3.1 8B (via Groq Cloud) or xAI Grok-2
+### AI & Vector Engine
+- **LLM**: Llama 3.1 8B (via Groq) / xAI Grok
 - **Vector Store**: FAISS (Facebook AI Similarity Search)
-- **Embeddings**: Sentence-Transformers (all-MiniLM-L6-v2) for semantic mapping
-- **Orchestration**: Custom RAG Pipeline for context-aware analysis
+- **Embeddings**: Sentence-Transformers (`all-MiniLM-L6-v2`)
 
 ---
 
-## 🧠 GenAI Pipeline Flow
+## ⚙️ Installation & Setup
 
-1.  **Ingestion & Extraction**: Documents are uploaded and parsed into raw text using specialized extractors for PDF and DOCX formats.
-2.  **Semantic Chunking**: The extracted text is cleaned and split into optimized chunks to preserve context for the Large Language Model.
-3.  **Vectorization**: Each chunk is converted into high-dimensional embeddings and indexed in a FAISS vector store.
-4.  **Contextual Retrieval**: The system performs a semantic search within the vector index to retrieve the most relevant sections of the document.
-5.  **Intelligence Generation**: The retrieved context is passed to the LLM (Groq/xAI) with a specialized strategic prompt to generate:
-    - **Executive Summary**: Core highlights of the document.
-    - **Critical Risks**: High-priority red flags and vulnerabilities.
-    - **Growth Opportunities**: Potential areas for expansion or improvement.
-    - **Strategic Recommendations**: Direct, actionable advice.
-6.  **Persistence**: Final insights and file metadata are saved to PostgreSQL for instant history retrieval.
+### 1. Prerequisites
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL Server
 
----
-
-## ✨ Key Features
-
-- **Intelligence Dashboard**: A dual-pane workspace featuring extracted insights alongside a professional PDF viewer.
-- **Smart History Sidebar**:
-    - **Search**: Instantly filter through past analyses.
-    - **You can Pin the Important Reports**: Pin your most important reports to the top of the list.
-    - **Permanent Deletion**: Securely remove reports and their associated PDF files from the server and database.
-- **Integrated PDF Viewer**: High-quality document previewer with fit-to-width (`FitH`) viewing mode.
-- **Theme Support**: Fully responsive design with deep dark-mode and light-mode aesthetics.
-- **Production-Ready Backend**: Structured PostgreSQL database for reliable history management.
-
----
-
-## 🚀 Quick Start
-
-### 1. Database Setup
-Ensure PostgreSQL is running. (Docker-compose support included).
-
-### 2. Backend Initialization
+### 2. Backend Setup
 ```bash
 cd backend
+# Install dependencies
 pip install -r requirements.txt
-python init_db.py  # Initialize schema
-python main.py     # Start server
+
+# Configure Environment
+# Create a .env file with:
+# DATABASE_URL=postgresql://user:password@localhost:5432/documentai
+# GROQ_API_KEY=your_groq_key
+# CLOUDCONVERT_API_KEY=your_key
+
+# Initialize Database
+python init_db.py
+
+# Run Server
+python main.py
 ```
 
 ### 3. Frontend Setup
 ```bash
 cd frontend
+# Install dependencies
 npm install
+
+# Run Development Server
 npm run dev
 ```
 
-Visit `http://localhost:3000` to start generating insights.
+---
+
+## 📂 Project Structure
+
+```text
+├── backend/
+│   ├── rag/               # RAG Pipeline (Chunking, Embedding, Vector Store)
+│   ├── converted_pdfs/    # Storage for processed documents
+│   ├── main.py            # FastAPI Application Entry
+│   ├── database.py        # SQLAlchemy Database Configuration
+│   └── models.py          # Pydantic & SQLAlchemy Models
+├── frontend/
+│   ├── src/app/          # Next.js App Router Pages
+│   ├── src/components/   # Reusable UI Components
+│   └── src/context/      # Auth & Global State
+└── docker-compose.yml     # Containerization support (Optional)
+```
+
+---
+
+## 🤝 Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
+
+## 🏆 Acknowledgments
+Special thanks to the **Groq** and **HuggingFace** teams for providing the powerful models that drive this platform.
+
+**DocAI - Empowering Data-Driven Decisions.**

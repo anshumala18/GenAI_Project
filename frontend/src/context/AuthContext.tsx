@@ -6,13 +6,14 @@ import { useRouter } from 'next/navigation';
 
 interface User {
   id: number;
+  name: string;
   email: string;
 }
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (token: string) => void;
+  login: (token: string, userData: User) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -28,22 +29,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const storedToken = localStorage.getItem('docai_token');
-    if (storedToken) {
-      setToken(storedToken);
-      // In a real app, you'd verify the token or fetch user info here
-      // For now, we'll just set it
+    const storedUser = localStorage.getItem('docai_user');
+    
+    if (storedToken && storedUser && storedUser !== "undefined") {
+      try {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
+      } catch (err) {
+        console.error("Failed to parse stored user data:", err);
+        localStorage.removeItem('docai_user');
+        localStorage.removeItem('docai_token');
+      }
     }
     setIsLoading(false);
   }, []);
 
-  const login = (newToken: string) => {
+  const login = (newToken: string, userData: User) => {
     localStorage.setItem('docai_token', newToken);
+    localStorage.setItem('docai_user', JSON.stringify(userData));
     setToken(newToken);
+    setUser(userData);
     router.push('/');
   };
 
   const logout = () => {
     localStorage.removeItem('docai_token');
+    localStorage.removeItem('docai_user');
     setToken(null);
     setUser(null);
     router.push('/login');
