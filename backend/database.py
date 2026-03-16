@@ -31,6 +31,7 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
@@ -39,6 +40,7 @@ class User(Base):
     def to_dict(self):
         return {
             "id": self.id,
+            "name": self.name or self.email.split('@')[0],
             "email": self.email,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat(),

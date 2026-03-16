@@ -80,11 +80,18 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Email already registered")
         
         # Create new user
+        print(f"DEBUG: Registering user - Name: {user_data.name}, Email: {user_data.email}")
         hashed_pwd = auth_utils.get_password_hash(user_data.password)
-        new_user = User(email=user_data.email, hashed_password=hashed_pwd)
+        new_user = User(
+            name=user_data.name,
+            email=user_data.email, 
+            hashed_password=hashed_pwd
+        )
+        print(f"DEBUG: User object before add - Name: {new_user.name}")
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
+        print(f"DEBUG: User object after refresh - ID: {new_user.id}, Name: {new_user.name}")
         return new_user
     except HTTPException as e:
         raise e
@@ -101,7 +108,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     
     access_token = auth_utils.create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": user.to_dict()
+    }
 
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_document(

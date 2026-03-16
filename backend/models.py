@@ -36,10 +36,12 @@ class UserBase(BaseModel):
     email: str
 
 class UserCreate(UserBase):
+    name: str
     password: str
 
 class UserResponse(UserBase):
     id: int
+    name: Optional[str] = None
     is_active: bool
     created_at: datetime
 
@@ -49,6 +51,7 @@ class UserResponse(UserBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    user: UserResponse
 
 class TokenData(BaseModel):
     email: Optional[str] = None
